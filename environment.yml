@@ -1,0 +1,6 @@
+name: etl-api
+channels:
+  - conda-forge
+dependencies:
+  - pip
+  - python=3.10
