@@ -1,6 +1,9 @@
-name: etl-api
+name: etlapi
 channels:
   - conda-forge
+  - defaults
 dependencies:
   - pip
   - python=3.10
+  - pip:
+      - poetry

@@ -4,14 +4,12 @@ version = "0.0.1"
 description = "Trial of ETL with an API"
 authors = [""]
 readme = "README.md"
-packages = [{include = "trial_etl_and_api"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 pre-commit = "^3.3.3"
 black = "^23.7.0"
 jupyter = "^1.0.0"
-fastapi = {extras = ["all"], version = "^0.103.0"}
 pandas = "^2.0.3"
 pyarrow = "^13.0.0"
 loguru = "^0.7.0"
@@ -19,6 +17,10 @@ xlrd = "^2.0.1"
 beautifulsoup4 = "^4.12.2"
 lxml = "^4.9.3"
 parse = "^1.19.1"
+prefect = "^2.11.5"
+prefect-gcp = {extras = ["cloud-storage"], version = "^0.4.5"}
+jupyterlab = "^4.0.5"
+openpyxl = "^3.1.2"
 
 [build-system]
 requires = ["poetry-core"]
