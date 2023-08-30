@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+import toml
 from bs4 import BeautifulSoup
 from parse import parse
 from prefect import flow
@@ -12,8 +13,10 @@ from prefect import task
 STEM_FILENAME = "/file?uri=/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/datasets/monthlyfiguresondeathsregisteredbyareaofusualresidence/"
 ONS_URL_DATA_PAGE = "https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/datasets/monthlyfiguresondeathsregisteredbyareaofusualresidence"
 ONS_MAIN_URL = "https://www.ons.gov.uk"
-DOWNLOADS_LOCATION = "scratch/"
-MIN_YEAR = 2015
+
+# Read local `config.toml` file.
+config = toml.load("config.toml")
+MIN_YEAR = config["min_year"]
 
 
 def find_files(url: str) -> list:
@@ -48,7 +51,7 @@ def download_and_save_file(file_url: str, file_name: str):
     """
     logger = get_run_logger()
     # if scratch path doesn't exist, create it
-    dl_path = Path(DOWNLOADS_LOCATION)
+    dl_path = Path(config["downloads_location"])
     dl_path.mkdir(parents=True, exist_ok=True)
     # Now check if file exists already. If not, dl it
     file_location = dl_path / file_name
