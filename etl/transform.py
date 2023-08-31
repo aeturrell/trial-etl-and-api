@@ -132,6 +132,12 @@ def transform_from_excel_to_tidy_parquet() -> None:
         df["year"] = row["year"]
         df_tidy = pd.concat([df, df_tidy], axis=0)
 
+    df_tidy["datetime"] = (
+        pd.to_datetime(
+            df_tidy["year"].astype("string") + "-" + df_tidy["month"], format="%Y-%B"
+        )
+        + pd.offsets.BMonthEnd()
+    )
     df_tidy.to_parquet(Path(config["downloads_location"]) / "deaths_data.parquet")
 
 
