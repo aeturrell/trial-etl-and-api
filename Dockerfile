@@ -43,8 +43,5 @@ RUN poetry lock
 # Install the packages
 RUN poetry install
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
 # Signal that the dockerfile is built
 RUN echo "Success building the etlapi container!"

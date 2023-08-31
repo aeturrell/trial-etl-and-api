@@ -34,11 +34,45 @@ poetry run pre-commit run --all-files
 
 Ensure you have the [Google CLI installed](https://cloud.google.com/sdk/docs/install-sdk) and authenticated. Once you have downloaded and installed it, run `gcloud init` to set it up. This is the point at which your computer becomes trusted to do things to your GCP account.
 
-You will need to login too, using
+1. Create a new project on GCP.
+2. In the same project, create a new Service Account under IAM. A service account can be used to manage access to Google Cloud services.
+3. n the new service account, click on Actions then Manage keys. Create a new key which will be downloaded as a JSON file — keep it safe.
+
+In that JSON file, there will be an email address for the service account in the format: projectname-service@projectid.iam.gserviceaccount.com. It is for this account that you will now need to go to the Google Cloud Console IAM and add the following roles:
+
+- Cloud run admin
+- Storage admin
+- Artifact registry admin
+- Artifact registry repository admin
+- Artifact Registry Writer
+
+In principle, it looks like you can do this via Terraform too, as long as the Service Usage API is already enabled (see [this article on Stack Overflow](https://stackoverflow.com/questions/59055395/can-i-automatically-enable-apis-when-using-gcp-cloud-with-terraform), and this Terraform [page](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_service)).
+
+If you have used Google CLI before, you may now need to run:
 
 ```bash
-gcloud auth application-default login
+gcloud config set project $MY_PROJECT_ID
 ```
+
+You will need to login too, using (on your local computer)
+
+```bash
+gcloud auth login
+```
+
+### Deployment Plan via Prefect
+
+```bash
+prefect deployment build etl/main.py:main_flow --name main-flow --cron "0 0 * * *"
+```
+
+To have it run every midnight.
+
+```bash
+prefect deployment apply main_flow-deployment.yaml
+```
+
+to create a deployment 'main-flow/main-flow', which can be seen on the (local) server provided by `poetry run prefect server start`.
 
 ### Terraform
 
@@ -51,48 +85,59 @@ There are four terraform files required:
 - variables.tf: declares the type and description of key resource variables
 - terraform.tfvars: the actual names and IDs that you declared in variables.tf (NB: not in version control as sensitive)
 
-These lines were added to the `.gitignore`:
-
-```text
-# Local .terraform directories
-**/.terraform/*
-
-# .tfstate files
-*.tfstate
-*.tfstate.*
-
-# Crash log files
-crash.log
-crash.*.log
-
-# Exclude all .tfvars files, which are likely to contain sensitive data, such as
-# password, private keys, and other secrets. These should not be part of version
-# control as they are data points which are potentially sensitive and subject
-# to change depending on the environment.
-*.tfvars
-*.tfvars.json
-
-# Ignore override files as they are usually used to override resources locally and so
-# are not checked in
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# Include override files you do wish to add to version control using negated pattern
-# !example_override.tf
-
-# Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
-# example: *tfplan*
-
-# Ignore CLI configuration files
-.terraformrc
-terraform.rc
-```
+Check the `.gitignore` for some useful Terraform specific lines.
 
 To kick off terraforming, it's `terraform init`. If successful, you should see a message saying "Terraform has been successfully initialized!".
 
+Next, run `terraform plan`, which will think through what you've asked for in `main.tf`.
+
+Finally, to create the GCP resources, it's `terraform apply`.
+
+## Docker container
+
+This will be useful only for Cloud Run. Note that the Docker container only grabs the Python environment via a pre-built Python container and packages, which come via Poetry.
+
+```bash
+docker build --pull --rm -f "Dockerfile" -t trialetlandapi:latest "."
+```
+
+to build the Dockerfile. Use `docker tag SOURCE_IMAGE[:TAG] TARGET_IMAGE[:TAG]` to tag the image ready for the registry. eg
+
+```bash
+docker tag trialetlandapi:latest europe-west2-docker.pkg.dev/PROJECT-ID/registry_id/trialetlandapi:latest
+```
+
+where registry_id is the same as the one in terraform.tfvars. europe-west2-docker.pkg.dev is the host name. Configure gcloud to work with docker:
+
+```bash
+gcloud auth configure-docker europe-west2-docker.pkg.dev
+```
+
+Push the image with
+
+```bash
+docker push HOST-NAME/PROJECT-ID/REPOSITORY/IMAGE
+```
+
+You’ll then see your Docker image available in Artifact Registry.
+
 ## Running
+
+### General
+
+With prefect decorators in scripts and the flow function called in main, you can simply run scripts as you normally would, eg `poetry run python etl/transform.py`, to start a one-off Prefect agent task directly on the command line.
+
+To create a deployment file and to launch the cloud run:
+
+```bash
+prefect deployment build etl/main.py:main_flow --name main-flow --cron "0 0 * * *" -ib cloud-run-job/etlapi-cloud-run -o main_flow-deployment.yaml --apply
+```
+
+where etlapi-cloud-run is the name of a prefect cloud run block. NB the cron setting, which makes the deployment happen at midnight each day.
+
+### Running everything locally
+
+This means running the server / orchestrator locally, and running the worker pool locally too.
 
 Prefect server is at http://127.0.0.1:4200/ and can be launched with:
 
@@ -100,7 +145,37 @@ Prefect server is at http://127.0.0.1:4200/ and can be launched with:
 poetry run prefect server start
 ```
 
-With prefect decorators in scripts and the flow function called in main, you can simply run scripts as you normally would, eg `poetry run python etl/transform.py`, to start the Prefect server task.
+Add the info needed for the blocks (bucket, GCP credentials, cloud run job—not used) in the server UI. For this local running only the first two blocks are needed. Run
+
+```bash
+prefect deployment build etl/main.py:main_flow --name main-flow -o main_flow-deployment.yaml --apply
+```
+
+to create the deployment plan.
+
+Then
+
+```bash
+prefect agent start -q 'default'
+```
+
+To create an agent to take jobs.
+
+### Running the agent in the cloud
+
+In this case, Google Cloud Run takes the job. Ensure there's a Cloud Run block that links to the GCP block. Then
+
+To create a deployment file and to launch the cloud run:
+
+```bash
+prefect deployment build etl/main.py:main_flow --name main-flow --cron "0 0 * * *" -ib cloud-run-job/etlapi-cloud-run -o main_flow-deployment.yaml --apply
+```
+
+### Running the agent and the orchestrator in the cloud
+
+This is like the previous case, except that we will orchestrate in the cloud too. For this, we need another block.
+
+## Context
 
 Inspiration:
 
