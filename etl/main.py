@@ -1,7 +1,7 @@
 from extract import get_ons_deaths_data
-from transform import transform_from_excel_to_tidy_parquet
 from load import main_load_deaths_gcs
 from prefect import flow
+from transform import transform_from_excel_to_tidy_parquet
 
 
 @flow

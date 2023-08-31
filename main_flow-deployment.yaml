@@ -6,18 +6,15 @@ description: null
 version: fab87c72affda8a8022814cf9e11a6ad
 # The work queue that will handle this deployment's runs
 work_queue_name: default
-work_pool_name: default-agent-pool
+work_pool_name: null
 tags: []
 parameters: {}
-schedule: null
-is_schedule_active: true
+schedule:
+  cron: 0 0 * * *
+  timezone: null
+  day_or: true
+is_schedule_active: null
 infra_overrides: {}
-
-###
-### DO NOT EDIT BELOW THIS LINE
-###
-flow_name: main-flow
-manifest_path: null
 infrastructure:
   type: process
   env: {}
@@ -26,11 +23,14 @@ infrastructure:
   command: null
   stream_output: true
   working_dir: null
-  _block_document_id: 707dddfa-5c8a-4774-bef7-319a51093ff3
-  _block_document_name: anonymous-73cded89-b0b7-42c4-97c7-a50003a2aeb5
-  _is_anonymous: true
   block_type_slug: process
   _block_type_slug: process
+
+###
+### DO NOT EDIT BELOW THIS LINE
+###
+flow_name: main-flow
+manifest_path: null
 storage: null
 path: /Users/aet/Documents/git_projects/trial-etl-and-api
 entrypoint: etl/main.py:main_flow
@@ -40,5 +40,5 @@ parameter_openapi_schema:
   properties: {}
   required: null
   definitions: null
-timestamp: '2023-08-31T00:04:44.408350+00:00'
+timestamp: '2023-08-31T20:11:30.802725+00:00'
 triggers: []

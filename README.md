@@ -36,22 +36,20 @@ before each commit.
 
 The ETL scripts are:
 
-- etl/extract.py — downloads deaths data by geography from [this ONS page](), which has Excel files for each year. The script downloads them all.
+- etl/extract.py — downloads deaths data by geography from [this ONS page](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/datasets/monthlyfiguresondeathsregisteredbyareaofusualresidence), which has Excel files for each year. The script downloads them all.
 - etl/transform.py - this takes downloaded files, opens them, finds the relevant sheets, cleans them, and stacks them in a tidy format in a parquet file. Challenges are:
   - Worksheet names change over time
   - File formats change (the file extension)
   - New data may be added in a new file, if the new data refer to January, or added into an existing file, if the month they refer to is not January
 - etly/load.py — this step requires Google Cloud resources; it uploads the parquet file to a nominated Google bucket.
 
-The *task* and *flow* decorators in these scripts are used by **Prefect** to create a
+The *task* and *flow* decorators in these scripts are used by **Prefect** to create a Directed Acyclic Graph.
 
 ## Google Cloud Resources via Terraform
 
-There are up to three elements that operate on the cloud:
+There is one element that operates on the cloud in this ETL formulation:
 
 1. The Google storage bucket, which houses the most recent parquet file
-2. Google Cloud Run, to (optionally) provide a runner agent (a computer that carries out the ETL) in the cloud
-3. (Optionally) a Google VM, to host the orchestration, ie to direct agents, in the cloud
 
 Ensure you have the [Google CLI installed](https://cloud.google.com/sdk/docs/install-sdk) and authenticated. Once you have downloaded and installed it, run `gcloud init` to set it up. This is the point at which your computer becomes trusted to do things to your GCP account.
 
@@ -61,11 +59,7 @@ Ensure you have the [Google CLI installed](https://cloud.google.com/sdk/docs/ins
 
 In that JSON file, there will be an email address for the service account in the format: projectname-service@projectid.iam.gserviceaccount.com. It is for **this account** that you will now need to go to the Google Cloud Console IAM and add the following roles:
 
-- Cloud run admin
 - Storage admin
-- Artifact registry admin
-- Artifact registry repository admin
-- Artifact Registry Writer
 
 In principle, it looks like you can do this via Terraform too, as long as the Service Usage API is already enabled (see [this article on Stack Overflow](https://stackoverflow.com/questions/59055395/can-i-automatically-enable-apis-when-using-gcp-cloud-with-terraform), and this Terraform [page](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/google_project_service)).
 
@@ -104,67 +98,23 @@ Finally, to create the GCP resources, it's `terraform apply`.
 
 ## Deployment Plan via Prefect
 
+Add the info needed for the blocks (bucket and GCP credentials) in the server UI using blocks -> add block. You can find more on [using blocks in Prefect here](https://docs.prefect.io/2.12.0/concepts/blocks/). The GCS Bucket block allows you to load data to GCP buckets; the GCP Credentials block handles authentication and is linked to by the former.
+
 Prefect allows us to create a recipe that an orchestrator can use to send flows to agents. The below builds one of these recipes. It uses etl/main.py:main_flow for the flow. The `--cron` keyword argument is optional, and causes the orchestrator to start a flow (an execution of the DAG encapsulated by the given flow) every midnight.
 
 ```bash
-prefect deployment build etl/main.py:main_flow --name main-flow --cron "0 0 * * *"
+prefect deployment build etl/main.py:main_flow --name main-flow --cron "0 0 * * *" -o main_flow-deployment.yaml --apply
 ```
 
-To ensure that the recipe created in `main_flow-deployment.yaml` is lined up in the orchestrator, and will be launched according to the schedule. (It's possible to launch flows based on [trigger events](https://www.prefect.io/blog/event-driven-flows-with-prefect) too.)
+This ensures that the recipe created in `main_flow-deployment.yaml` is also lined up in the orchestrator, and will be launched according to the schedule. (It's possible to launch flows based on [trigger events](https://www.prefect.io/blog/event-driven-flows-with-prefect) too.)
+
+You can also apply existing deployments using:
 
 ```bash
 prefect deployment apply main_flow-deployment.yaml
 ```
 
-to create a deployment 'main-flow/main-flow', which can be seen on the (local) server provided by `poetry run prefect server start`.
-
-Note that none of this will actually run the flow, it just creates a recipe that an orchestrator will use to pass to an agent to run the flow. It will run if both orchestrator and agent are in place, and the scheduled moment is hit.
-
-## Docker container
-
-This will be useful only for Cloud Run. Note that the Docker container only grabs the Python environment via a pre-built Python container and packages, which comes via Poetry. **Do not copy the entire repo over in your Dockerfile** as it will likely contain secrets.
-
-```bash
-docker build --pull --rm -f "Dockerfile" -t trialetlandapi:latest "."
-```
-
-to build the Dockerfile. Use `docker tag SOURCE_IMAGE[:TAG] TARGET_IMAGE[:TAG]` to tag the image ready for the registry. eg
-
-```bash
-docker tag trialetlandapi:latest europe-west2-docker.pkg.dev/PROJECT-ID/registry_id/trialetlandapi:latest
-```
-
-where registry_id is the same as the one in terraform.tfvars. europe-west2-docker.pkg.dev is the host name. Configure gcloud to work with docker:
-
-```bash
-gcloud auth configure-docker europe-west2-docker.pkg.dev
-```
-
-Push the image with
-
-```bash
-docker push HOST-NAME/PROJECT-ID/REPOSITORY/IMAGE
-```
-
-You’ll then see your Docker image available in Artifact Registry.
-
-## Running
-
-### General
-
-With prefect decorators in scripts and the flow function called in main, you can simply run scripts as you normally would, eg `poetry run python etl/transform.py`, to start a one-off Prefect agent task directly on the command line. However, this will be executed in the moment and not orchestrated.
-
-### Running everything locally
-
-This means running the server / orchestrator locally, and running the worker pool locally too.
-
-Prefect server is at http://127.0.0.1:4200/ and can be launched with:
-
-```bash
-poetry run prefect server start
-```
-
-Add the info needed for the blocks (bucket, GCP credentials, cloud run job—not used) in the server UI. For this local running only the first two blocks are needed. Run
+Note that none of this will actually run the flow, it just creates a recipe that an orchestrator will use to pass to an agent to run the flow. It will run if both orchestrator and agent are in place, and the scheduled moment is hit. Run
 
 ```bash
 prefect deployment build etl/main.py:main_flow --name main-flow -o main_flow-deployment.yaml --apply
@@ -172,29 +122,29 @@ prefect deployment build etl/main.py:main_flow --name main-flow -o main_flow-dep
 
 to create the deployment plan.
 
+## Running
+
+With prefect decorators in scripts and the flow function called in main, you can simply run scripts as you normally would, eg `poetry run python etl/transform.py`, to start a one-off Prefect agent task directly on the command line. However, this will be executed in the moment and not orchestrated. This is just one flow, not the flow you have deployed via the yaml file.
+
+Prefect server is at http://127.0.0.1:4200/ and can be launched with:
+
+```bash
+poetry run prefect server start
+```
+
 Then
 
 ```bash
 prefect agent start -q 'default'
 ```
 
-To create an agent to take jobs.
+To create an agent to take jobs. Note that you can use eg `--cron "0 0 * * *"` to schedule runs (in this case, the flows will run at midnight).
 
-### Running the agent in the cloud
+Note that even if a flow is not scheduled to run just yet, you can go to deployments in the UI and create an *ad hoc* one by clicking run.
 
-In this case, Google Cloud Run takes the job. Ensure there's a Cloud Run block that links to the GCP block. Then
+## Running on the cloud
 
-To create a deployment file and to launch the cloud run:
-
-```bash
-prefect deployment build etl/main.py:main_flow --name main-flow --cron "0 0 * * *" -ib cloud-run-job/etlapi-cloud-run -o main_flow-deployment.yaml --apply
-```
-
-where etlapi-cloud-run is the name of a prefect cloud run block. NB the cron setting, which makes the deployment happen at midnight each day.
-
-### Running the agent and the orchestrator in the cloud
-
-This is like the previous case, except that we will orchestrate in the cloud too. For this, we need another block.
+It's possible to have the flows run by Google Cloud Run, and the orchestrator work off a GCP Virtual Machine. You need to create a docker image for cloud run to do this. Ensuring this works well is not trivial though, especially if you are developing cross-platform.
 
 ## Context
 
