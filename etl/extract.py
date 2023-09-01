@@ -28,7 +28,7 @@ def find_files(url: str) -> list:
     Returns:
         list: file links with extensions
     """
-    soup = BeautifulSoup(requests.get(url).text, features="lxml")
+    soup = BeautifulSoup(requests.get(url).text, features="html5lib")
 
     hrefs = [a["href"] for a in soup.find_all("a")]
     hrefs = [a for a in hrefs if len(a.split(".")) > 1]
